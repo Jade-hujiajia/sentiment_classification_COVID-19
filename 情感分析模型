@@ -1,0 +1,440 @@
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+import pandas as pd
+import torch.nn.functional as F
+import torch
+import pandas as pd
+import numpy as np
+from pytorch_pretrained_bert import BertTokenizer
+from tqdm import tqdm
+import torch.utils.data.dataloader as dataloader
+from sklearn.metrics import accuracy_score,recall_score,f1_score
+from pytorch_pretrained_bert import BertForSequenceClassification,BertModel
+from pytorch_pretrained_bert import BertAdam
+import torch.nn as nn
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.metrics import accuracy_score,recall_score,f1_score
+from sklearn.model_selection import StratifiedKFold
+import time
+import random
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.metrics import accuracy_score,recall_score,f1_score
+from sklearn.model_selection import StratifiedKFold
+import time
+import random
+from transformers import BertTokenizer
+bert_name = 'bert-base-chinese'
+tokenizer = BertTokenizer.from_pretrained(bert_name)
+
+
+import pandas as pd
+
+
+
+def compute_bert_inputs(text, tokenizer, max_sequence_length):
+    
+    inputs = tokenizer.encode_plus(text,max_length=max_sequence_length)
+    input_ids = inputs['input_ids']
+    input_masks = [1] * len(input_ids)
+    input_segments = inputs['token_type_ids']
+    padding_length = max_sequence_length - len(input_ids)
+    padding_id = tokenizer.pad_token_id
+    input_ids = input_ids + ([padding_id] * padding_length)
+    input_masks = input_masks + ([0] * padding_length)
+    input_segments = input_segments + ([0] * padding_length)
+    
+    return [input_ids, input_masks, input_segments]
+
+
+def compute_bert_input_arrays(df, col, tokenizer, max_sequence_length):
+    input_ids, input_masks, input_segments = [], [], []
+    for instance in tqdm(df[col]):
+        ids, masks, segments = compute_bert_inputs(str(instance), tokenizer, max_sequence_length)
+        input_ids.append(ids)
+        input_masks.append(masks)
+        input_segments.append(segments)
+        
+    return [np.asarray(input_ids, dtype=np.int32), 
+            np.asarray(input_masks, dtype=np.int32), 
+            np.asarray(input_segments, dtype=np.int32)
+           ]
+
+
+def get_bert_input(file,max_len=512):
+    '''
+        生成单个句子的BERT模型的三个输入
+        参数:  
+            text: 文本(单个句子)
+            tokenizer: 分词器
+            max_len: 文本分词后的最大长度
+        返回值:
+            input_ids, attention_mask, token_type_ids
+    '''
+    cls_token = '[CLS]'
+    sep_token = '[SEP]'
+    word_piece_list=[]
+
+    word_piece_list = pd.read_csv(file)['微博中文内容']
+
+    # print(word_piece_list[:10])
+    # word_piece_list=[str(i) for i in word_piece_list]
+    # word_piece_list=' '.join(word_piece_list)
+
+    word_piece_list = tokenizer.tokenize(word_piece_list)  #分词
+    # peint)
+    input_id = tokenizer.convert_tokens_to_ids(word_piece_list) #把分词结果转成id
+    if len(input_id) > max_len-2:   #如果input_id的长度大于max_len，则进行截断操作
+        input_id = input_id[:510]
+    input_id = tokenizer.build_inputs_with_special_tokens(input_id) #对input_id补上[CLS]、[SEP]
+
+    attention_mask = [] # 注意力的mask，把padding部分给遮蔽掉
+    for i in range(len(input_id)):
+        attention_mask.append(1)    # 句子的原始部分补1
+    while len(attention_mask) < max_len:
+        attention_mask.append(0)    # padding部分补0
+
+    while len(input_id) < max_len:  # 如果句子长度小于max_len, 做padding，在句子后面补0
+        input_id.append(0)
+
+    token_type_id = [0] * max_len # 第一个句子为0，第二个句子为1，第三个句子为0 ..., 也可记为segment_id
+
+    assert len(input_id) == len(token_type_id) == len(attention_mask)
+
+    return input_id,attention_mask,token_type_id
+        
+
+
+#!/usr/bin/env python
+# coding: utf-8
+
+# ## 加载库 超参数
+
+
+import pandas as pd
+import numpy as np
+from tqdm import tqdm
+from transformers import *
+from sklearn.model_selection import StratifiedKFold
+from keras.utils import to_categorical
+import random
+input_attributes = '微博中文内容'
+output_attributes = '情感倾向'
+DATA_PATH = 'D:/code/nlp/大作业2/sentiment_classification_COVID-19-master/data/'
+BERT_PATH = 'D:/code/nlp/大作业2/bert/bert-chinese/'
+MAX_SEQUENCE_LENGTH = 140
+
+df_train = pd.read_csv(DATA_PATH+'nCoV_100k_train.labled.csv', encoding='utf-8', usecols=[3,6])
+df_test = pd.read_csv(DATA_PATH+'nCov_10k_test.csv', encoding='utf-8', usecols=[0,3])
+df_train = df_train[df_train[output_attributes].isin(['0','-1','1'])]
+#print(df_train[output_attributes].value_counts())
+df_sub = pd.read_csv(DATA_PATH+'submit_example.csv', encoding='utf-8')
+
+import torch
+import torch.nn as nn
+import torchvision.models as models
+
+# # 加载预训练的ResNet50模型
+# resnet = models.resnet50(pretrained=True)
+
+# # 移除最后一层全连接层
+# feature_extractor = nn.Sequential(*list(resnet.children())[:-1])
+
+# # 将图片转换为张量并进行标准化
+# image = torch.randn(1,  64, 36,3)  # 假设有一个(64, 36, 3)的图片
+# image_tensor = torch.transpose(image, 1, 3)  # 调整通道维度顺序
+# image_tensor = (image_tensor - 0.5) / 0.5  # 标准化
+
+# # 提取特征
+# features = feature_extractor(image_tensor)
+
+# # 将特征展平为一维向量
+# features = torch.flatten(features, start_dim=1)
+# print(features.shape)
+
+
+import torch
+import torch.nn as nn
+import torchvision.models as models
+
+class SELayer(nn.Module):
+    def __init__(self, channel, reduction=1):
+        super(SELayer, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc1 = nn.Sequential(
+            nn.Linear(channel, channel / reduction),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel / reduction, channel),   
+            nn.Sigmoid())
+        self.fc2 = nn.Sequential(
+            nn.Conv2d(channel , channel / reduction, 1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channel , channel / reduction, 1, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc1(y).view(b, c, 1, 1)
+        return x * y
+# print(features.shape)
+# 定义图像模态的神经网络层
+# class ImageAttention(nn.Module):
+    
+#     def __init__(self, input_dim=2048, hidden_dim=256):
+#         super(ImageAttention, self).__init__()
+#         self.hidden_dim = hidden_dim
+        
+#         # 使用全连接层将输入特征映射到隐藏特征空间
+#         self.fc = nn.Linear(input_dim, hidden_dim)
+        
+#         # 定义注意力权重的计算
+#         # self.attention_weights = nn.Linear(hidden_dim, 1)
+        
+#     def forward(self, image_features):
+#         # 将输入特征映射到隐藏特征空间
+#         x = self.fc(image_features)
+#         x = F.relu(x)
+#         return x
+        # 计算注意力权重
+        # attention_scores = self.attention_weights(hidden)
+        
+        # 应用softmax函数获得注意力权重
+        # attention_weights = F.softmax(attention_scores, dim=1)
+        
+        # 使用注意力权重对图像特征进行加权求和
+        # attended_features = torch.sum(attention_weights * image_features, dim=1)
+        
+        # return attended_features
+    
+
+class TextModule(nn.Module):
+  def __init__(self):
+    super(TextModule,self).__init__()
+    # self.bert = BertModel.from_pretrained("chinese_roberta_wwm_ext_pytorch/")
+    self.bert = BertModel.from_pretrained(pretrained_model_name_or_path='D:/code/nlp/大作业2/bert/bert-chinese')
+
+    for param in self.bert.parameters():
+      param.requires_grad = True 
+    self.fc = nn.Linear(512,256)
+    
+  def forward(self,input_ids,input_mask,segment_ids):
+    _, pooled = self.bert(input_ids,token_type_ids = segment_ids,attention_mask = input_mask,output_all_encoded_layers= False)
+    out = self.fc(pooled)
+    return out 
+
+# 定义文本模态的神经网络层
+# class TextModule(nn.Module):
+#     def __init__(self, input_dim=512, hidden_dim=256):
+#         super(TextModule, self).__init__()
+#         self.fc = nn.Linear(input_dim, hidden_dim)
+#         self.relu = nn.ReLU()
+
+#     def forward(self, x):
+#         x = self.fc(x)
+#         x = self.relu(x)
+#         return x
+
+# 定义融合模块
+class FusionModule(nn.Module):
+    def __init__(self, input_dim, hidden_dim):
+        super(FusionModule, self).__init__()
+        self.fc = nn.Linear(input_dim, hidden_dim)
+        self.relu = nn.ReLU()
+
+    def forward(self, x1, x2):
+        x = torch.cat((x1, x2), dim=1)
+        x = self.fc(x)
+        x = self.relu(x)
+        return x
+
+# 定义情感分析模型
+class SentimentAnalysisModel(nn.Module):
+    def __init__(self, image_input_dim=2048, text_input_dim=512, hidden_dim=256, num_classes=3):
+        super(SentimentAnalysisModel, self).__init__()
+        self.image_module =SELayer(3)
+        self.text_module = TextModule()
+        self.fusion_module = FusionModule(hidden_dim, hidden_dim)
+        self.fc = nn.Linear(hidden_dim, num_classes)
+
+    def forward(self, image_input, text_input):
+        input_ids,input_mask,segment_ids=text_input[0],text_input[1],text_input[2]
+        print(input_ids.shape)
+        image_features = self.image_module(image_input)
+        text_features = self.text_module(input_ids,input_mask,segment_ids)
+        fused_features = self.fusion_module(image_features, text_features)
+        output = self.fc(fused_features)
+        return output
+
+
+       
+ #准备数据和标签
+image_data = np.load('img_train.npy',allow_pickle=True)
+# text_data = pd.read_csv('text_data.csv')
+# labels = pd.read_csv('labels.csv')
+text_input=pd.read_csv('clean_test_labled.csv')['分词结果']
+labels = pd.read_csv('clean_test_labled.csv')['情感倾向']
+
+for i in range(len(labels)):
+    try:
+        labels[i]=int(i)
+    except:
+        labels[i]=0
+img_d=[]
+for i in range(len(image_data)):
+    image_data[i]=torch.tensor(image_data[i], dtype=torch.float32)
+    if not image_data[i].shape==(64,36,3):
+        print(image_data[i].shape)
+    
+    img_d.append(image_data[i])
+img_d=torch.stack(img_d)
+file='clean_train_labled.csv'
+image_input = torch.tensor(img_d, dtype=torch.float32)
+text_data=get_bert_input(file)
+# text_input = torch.tensor(text_data)
+train_labels = torch.tensor(labels, dtype=torch.long)
+
+
+
+text_input[0]=torch.unsqueeze(text_input[0],0)
+text_input[1]=torch.unsqueeze(text_input[1],0)
+text_input[2]=torch.unsqueeze(text_input[2],0)
+# 初始化模型和优化器
+# image_input_dim = image_input.size(1)
+# print(image_input_dim)
+
+# text_input_dim = text_input.size(1)
+# print(text_input_dim)
+
+hidden_dim = 256
+num_classes = 3
+# 加载预训练的ResNet50模型
+resnet = models.resnet50(pretrained=True)
+
+# 移除最后一层全连接层
+feature_extractor = nn.Sequential(*list(resnet.children())[:-1])
+model = SentimentAnalysisModel()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+criterion = nn.CrossEntropyLoss()
+
+# 训练模型
+num_epochs = 10
+batch_size = 11
+
+
+        # text_input[0]=torch.unsqueeze(text_input[0],2)
+        # text_input[1]=torch.unsqueeze(text_input[1],2)
+        # text_input[2]=torch.unsqueeze(text_input[2],2)
+        # outputs = model(batch_images, text_input)
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model.to(device)
+# 交叉熵损失函数
+criterion = torch.nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)  # momentum动量
+import numpy as np
+from sklearn.model_selection import KFold
+
+
+import torch.utils.data.dataset as Dataset
+
+class subDataset(Dataset.Dataset):
+	def __init__(self,Feature_1,Feature_2,Label):
+		self.Feature_1 = Feature_1
+		self.Feature_2 = Feature_2
+		self.Label = Label
+	def __len__(self):
+		return len(self.Label)
+	def __getitem__(self,index):
+		Feature_1 = torch.Tensor(self.Feature_1[index])
+		Feature_2 = torch.Tensor(self.Feature_2[index])
+		Label = torch.Tensor(self.Label[index])
+		return Feature_1,Feature_2,Label
+
+train_data = subDataset(image_data,text_data,labels)
+train_loader = torch.utils.data.DataLoader(train_data,batch_size=batch_size,shuffle=True)
+
+
+
+gkf = StratifiedKFold(n_splits=3).split(X=df_train[input_attributes].fillna('-1'), y=df_train[output_attributes].fillna('-1'))
+
+valid_preds = []
+test_preds = []
+
+df_sub = pd.read_csv('sentiment_classification_COVID-19-master/data/submit_example.csv', encoding='utf-8')
+# model.save_weights(f'sentiment_classification_COVID-19-master/program/bert-0.h5')
+sub = np.average(test_preds, axis=0)
+sub = np.argmax(sub,axis=1)
+df_sub['y'] = sub-1
+df_sub['id'] = df_sub['id'].apply(lambda x: str(x)+' ')
+df_sub.to_csv('./submit8.csv',index=False, encoding='utf-8')
+
+
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from sklearn.model_selection import KFold
+
+
+# 设置训练参数
+num_epochs = 2
+learning_rate = 1e-5
+k = 6  # k 折交叉验证的折数
+
+# 创建模型实例
+model = SentimentAnalysisModel()
+
+# 定义损失函数和优化器
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+# 创建 k 折交叉验证实例
+kf = KFold(n_splits=k)
+
+# 执行 k 折交叉验证训练
+for fold, (train_idx, val_idx) in enumerate(kf.split(train_data)):
+    # 准备当前折的训练数据和验证数据
+    train_fold_data = train_data[train_idx]
+    train_fold_labels = train_labels[train_idx]
+    val_fold_data = train_data[val_idx]
+    val_fold_labels = train_labels[val_idx]
+
+    # 将数据转换为 PyTorch 的 Tensor 格式
+    train_fold_data = torch.tensor(train_fold_data)
+    train_fold_labels = torch.tensor(train_fold_labels)
+    val_fold_data = torch.tensor(val_fold_data)
+    val_fold_labels = torch.tensor(val_fold_labels)
+
+    # 设置模型为训练模式
+    model.train()
+
+    # 开始训练当前折的数据
+    for epoch in range(num_epochs):
+        # 清空梯度
+        optimizer.zero_grad()
+
+        # 前向传播
+        outputs = model(train_fold_data)
+
+        # 计算损失
+        loss = criterion(outputs, train_fold_labels)
+
+        # 反向传播和优化
+        loss.backward()
+        optimizer.step()
+
+        # 打印训练信息
+        print('Fold [{}/{}], Epoch [{}/{}], Loss: {:.4f}'
+              .format(fold+1, k, epoch+1, num_epochs, loss.item()))
+
+    # 在验证集上进行验证
+    model.eval()
+    with torch.no_grad():
+        outputs = model(val_fold_data)
+        _, predicted = torch.max(outputs.data, 1)
+        accuracy = (predicted == val_fold_labels).sum().item() / val_fold_labels.size(0)
+        print('Validation Accuracy: {:.4f}'.format(accuracy))
