@@ -122,8 +122,8 @@ from keras.utils import to_categorical
 import random
 input_attributes = '微博中文内容'
 output_attributes = '情感倾向'
-DATA_PATH = 'D:/code/nlp/大作业2/sentiment_classification_COVID-19-master/data/'
-BERT_PATH = 'D:/code/nlp/大作业2/bert/bert-chinese/'
+DATA_PATH = ''
+BERT_PATH = ''
 MAX_SEQUENCE_LENGTH = 140
 
 df_train = pd.read_csv(DATA_PATH+'nCoV_100k_train.labled.csv', encoding='utf-8', usecols=[3,6])
